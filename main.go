@@ -1,0 +1,116 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
+	govtypes "github.com/cosmos/cosmos-sdk/x/gov/types"
+	lens "github.com/strangelove-ventures/lens/client"
+	registry "github.com/strangelove-ventures/lens/client/chain_registry"
+)
+
+// Needed vars for this example:
+var (
+	// We will be fetching chain info from chain registry.
+	// This string must match the relevant directory name in the chain registry here:
+	// https://github.com/cosmos/chain-registry
+	chainRegName = "osmosis"
+
+	srcWalletMnemonic  = os.Getenv("testKeyMn")
+	destination_wallet = "osmo18pjx07s8aq42qtxeskw2d7h8edfank7r6clwrj"
+	amount_to_send     = "1uosmo"
+)
+
+func main() {
+
+	//	Fetches chain info from chain registry
+	chainInfo, err := registry.DefaultChainRegistry().GetChain(chainRegName)
+	if err != nil {
+		log.Fatalf("Failed to get chain info. Err: %v \n", err)
+	}
+
+	//	Use Chain info to select random endpoint
+	rpc, err := chainInfo.GetRandomRPCEndpoint()
+	if err != nil {
+		log.Fatalf("Failed to get random RPC endpoint on chain %s. Err: %v \n", chainInfo.ChainID, err)
+	}
+
+	// For this example, lets place the key directory in your PWD.
+	pwd, _ := os.Getwd()
+	key_dir := pwd + "/keys"
+
+	// Build chain config
+	chainConfig_1 := lens.ChainClientConfig{
+		Key:     "default",
+		ChainID: chainInfo.ChainID,
+		RPCAddr: rpc,
+		// GRPCAddr       string,
+		AccountPrefix:  chainInfo.Bech32Prefix,
+		KeyringBackend: "test",
+		GasAdjustment:  1.3,
+		GasPrices:      "0.01uosmo",
+		KeyDirectory:   key_dir,
+		Debug:          true,
+		Timeout:        "20s",
+		OutputFormat:   "json",
+		SignModeStr:    "direct",
+		Modules:        lens.ModuleBasics,
+	}
+
+	// Creates client object to pull chain info
+	chainClient, err := lens.NewChainClient(&chainConfig_1, key_dir, os.Stdin, os.Stdout)
+	if err != nil {
+		log.Fatalf("Failed to build new chain client for %s. Err: %v \n", chainInfo.ChainID, err)
+	}
+
+	// Lets restore a key with funds and name it "source_key", this is the wallet we'll use to send tx.
+	srcWalletAddress, err := chainClient.RestoreKey("source_key", srcWalletMnemonic)
+	if err != nil {
+		log.Fatalf("Failed to restore key. Err: %v \n", err)
+	}
+
+	//	Now that we know our key name, we can set it in our chain config
+	chainConfig_1.Key = "source_key"
+
+	// Sanitize coin amount and make it readable by SDK
+	coins, err := sdk.ParseCoinNormalized(amount_to_send)
+	if err != nil {
+		log.Fatalf("Error parsing coin string. Error: %s", err)
+	}
+
+	//	Build transaction message
+	req := &banktypes.MsgSend{
+		FromAddress: srcWalletAddress,
+		ToAddress:   destination_wallet,
+		Amount:      sdk.Coins{coins},
+	}
+
+	fmt.Println(req)
+
+	// Send message and get response
+	// res, err := chainClient.SendMsg(context.Background(), req)
+	// if err != nil {
+	// 	if res != nil {
+	// 		log.Fatalf("failed to send coins: code(%d) msg(%s)", res.Code, res.Logs)
+	// 	}
+	// 	log.Fatalf("Failed to send coins.Err: %v", err)
+	// }
+	// fmt.Println(chainClient.PrintTxResponse(res))
+
+	resp, err := chainClient.SendMsg(context.Background(), &govtypes.MsgVote{
+		ProposalId: 395,
+		Voter:      "osmo1cqmk75gg0l8pcevyj0hsn5qpgyl0zpj07rwkv3",
+		Option:     govtypes.OptionYes,
+	})
+	if err != nil {
+		if resp != nil {
+			log.Fatalf("failed to send coins: code(%d) msg(%s)", resp.Code, resp.Logs)
+		}
+		log.Fatalf("Failed to send coins.Err: %v", err)
+	}
+	fmt.Println(chainClient.PrintTxResponse(resp))
+}
