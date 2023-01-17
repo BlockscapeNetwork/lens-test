@@ -102,7 +102,8 @@ func (m *Module) GetProposals() error {
 	fmt.Printf("TallyResult Abstain %v\n", p.FinalTallyResult.Abstain.String())
 	fmt.Printf("TotalDeposit %v\n", p.TotalDeposit.String())
 
-	fmt.Printf("Content %T\n", p.Content)
+	fmt.Printf("Content type %T\n", p.Content)
+	fmt.Printf("Content string %#v\n", p.Content)
 
 	// all doesn't work, how do I get the content of p.Content? 🙄
 
